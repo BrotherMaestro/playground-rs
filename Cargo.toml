@@ -1,5 +1,6 @@
 [workspace]
 members = [
   "find_files",
+  "dice_roulette",
 ]
 resolver = "2"
