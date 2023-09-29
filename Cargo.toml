@@ -1,2 +1,5 @@
 [workspace]
-members = []
+members = [
+  "find_files",
+]
+resolver = "2"

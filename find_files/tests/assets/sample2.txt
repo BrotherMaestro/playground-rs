@@ -1,0 +1,6 @@
+Sample Text
+
+This is another file that contains content.
+Might try some unicode for fun...
+🥸😎😜🥳🤟🙌👾👻🥰
+... how awesome!

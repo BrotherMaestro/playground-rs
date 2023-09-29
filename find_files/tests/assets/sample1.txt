@@ -1,0 +1,5 @@
+Sample Text
+
+This is an empty text file.
+We have several lines to read from it.
+A very simple sentence structure is used to demonstrate file related functions. 
