@@ -77,10 +77,11 @@ impl DiceRollTotal {
     }
 }
 
+const SCORE_FILE_PATH: &str = "scores.msgpack";
+
 fn main() {
-    // Track best scores in a single game instance (atm)
-    // Might load the top scores from a file in the past
-    let mut scores = BTreeSet::<i64>::new();
+    // Track best scores in local file. Will save state after each game
+    let mut scores = read_state();
 
     let starting_hand = DiceHand {
         number_of_dice: 12,
@@ -106,8 +107,12 @@ fn main() {
                 } else {
                     println!("Total score: {}", score);
                 }
-                scores.insert(score);
                 println!();
+
+                // Update scores (and save top 10 scores in file)
+                scores.insert(score);
+                let score_slice: Vec<_> = scores.iter().rev().take(10).copied().collect();
+                save_state(&score_slice);
             }
             "rules" => {
                 print_rules(starting_hand);
@@ -118,7 +123,6 @@ fn main() {
             }
             "exit" => {
                 // End the game
-                // Might write top scores to file in the future
                 println!();
                 println!("Hope you enjoyed the game!");
                 println!();
@@ -168,7 +172,7 @@ where
 
     // Peekable iterator allows checking for empty (without consuming the first item)
     let mut peekable = scores.into_iter().peekable();
-    if let None = peekable.peek() {
+    if peekable.peek().is_none() {
         println!("No scores recorded");
     } else {
         println!("Top {how_many} Scores:");
@@ -177,6 +181,28 @@ where
         }
     }
     println!();
+}
+
+fn save_state(scores: &[i64]) {
+    match std::fs::File::create(SCORE_FILE_PATH) {
+        Ok(mut file) => {
+            if let Err(error) = rmp_serde::encode::write(&mut file, scores) {
+                println!("Failed to write scores. {}", error);
+            }
+        }
+        Err(error) => {
+            println!("Failed to save scores. Existing with IO error: {}", error);
+        }
+    }
+}
+
+fn read_state() -> BTreeSet<i64> {
+    if let Ok(file) = std::fs::File::open(SCORE_FILE_PATH) {
+        if let Ok(values) = rmp_serde::decode::from_read::<std::fs::File, Vec<i64>>(file) {
+            return values.into_iter().collect();
+        }
+    }
+    BTreeSet::<i64>::new()
 }
 
 fn get_user_input() -> String {
@@ -246,26 +272,29 @@ fn game_loop(starting_hand: DiceHand) -> i64 {
             let even = dice_totals.even;
             let odd = dice_totals.odd;
             tx_update
-                .send(GameUpdate::Message(String::from(format!(
+                .send(GameUpdate::Message(format!(
                     "Rolled total scores of:\n\t{even} even\n\t{odd} odd\n\n"
-                ))))
+                )))
                 .unwrap();
             // Determine the next move in the game (game finished OR roll a new hand of X dice)
             match dice_totals.parity_difference().clamp(0, i32::MAX as i64) as i32 {
                 0 => {
                     tx_update
-                        .send(GameUpdate::Message(String::from(concat!(
-                            "The even score is greater than the odd total this round. ",
-                            "No more dice left in your hand!\n"
-                        ))))
+                        .send(GameUpdate::Message(
+                            concat!(
+                                "The even score is greater than the odd total this round. ",
+                                "No more dice left in your hand!\n"
+                            )
+                            .to_string(),
+                        ))
                         .unwrap();
                     break;
                 }
                 next_hand => {
                     tx_update
-                        .send(GameUpdate::Message(String::from(format!(
+                        .send(GameUpdate::Message(format!(
                             "Rolling next hand of {next_hand} dice...\n"
-                        ))))
+                        )))
                         .unwrap();
                     tx_hand.send(next_hand).unwrap();
                 }
@@ -382,9 +411,10 @@ pub mod tests {
         // Roll single die, to ensure the result is always between the 'number of sides'
         // Do this a significant amount of times
         const NUMBER_OF_ATTEMPTS: i32 = 1000;
+        const NUMBER_OF_SIDES: i8 = 12;
         const STARTING_HAND: DiceHand = DiceHand {
             number_of_dice: 1,
-            number_of_sides: 12,
+            number_of_sides: NUMBER_OF_SIDES,
         };
 
         for _ in 0..NUMBER_OF_ATTEMPTS {
@@ -406,12 +436,13 @@ pub mod tests {
                 }
                 // Fail case
                 DiceRollTotal { even, odd } => {
-                    assert!(false, "(Even: {even}, Odd: {odd})");
+                    unreachable!("(Even: {even}, Odd: {odd})")
                 }
             }
         }
     }
 
+    /// Test simple game begin & end logic. Check for expected scores!
     #[test]
     fn game_logic_test() {
         // Sides > 1 : otherwise causes an infinite game loop...
@@ -422,7 +453,7 @@ pub mod tests {
             number_of_sides: 2,
         }) {
             x if x < 2 => {
-                assert!(false, "Result for 1 die of 2 sides must be at least 2");
+                unreachable!("Result for 1 die of 2 sides must be at least 2");
             }
             _ => {
                 // must be greater than or equal to 3
@@ -438,12 +469,18 @@ pub mod tests {
                 number_of_sides: 2,
             }) {
                 x if x < 8 => {
-                    assert!(false, "Result for 6 die of 2 sides must be at least 8");
+                    unreachable!("Result for 6 die of 2 sides must be at least 8");
                 }
                 _ => {
                     // must be greater than or equal to 3
                 }
             }
         }
+    }
+
+    /// Test score file saving state
+    #[test]
+    fn score_state_test() {
+        todo!();
     }
 }
