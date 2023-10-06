@@ -81,7 +81,7 @@ const SCORE_FILE_PATH: &str = "scores.msgpack";
 
 fn main() {
     // Track best scores in local file. Will save state after each game
-    let mut scores = read_state();
+    let mut scores = read_state_from_file(SCORE_FILE_PATH);
 
     let starting_hand = DiceHand {
         number_of_dice: 12,
@@ -112,7 +112,7 @@ fn main() {
                 // Update scores (and save top 10 scores in file)
                 scores.insert(score);
                 let score_slice: Vec<_> = scores.iter().rev().take(10).copied().collect();
-                save_state(&score_slice);
+                save_state_to_file(SCORE_FILE_PATH, &score_slice);
             }
             "rules" => {
                 print_rules(starting_hand);
@@ -183,8 +183,8 @@ where
     println!();
 }
 
-fn save_state(scores: &[i64]) {
-    match std::fs::File::create(SCORE_FILE_PATH) {
+fn save_state_to_file(file_path: &str, scores: &[i64]) {
+    match std::fs::File::create(file_path) {
         Ok(mut file) => {
             if let Err(error) = rmp_serde::encode::write(&mut file, scores) {
                 println!("Failed to write scores. {}", error);
@@ -196,8 +196,8 @@ fn save_state(scores: &[i64]) {
     }
 }
 
-fn read_state() -> BTreeSet<i64> {
-    if let Ok(file) = std::fs::File::open(SCORE_FILE_PATH) {
+fn read_state_from_file(file_path: &str) -> BTreeSet<i64> {
+    if let Ok(file) = std::fs::File::open(file_path) {
         if let Ok(values) = rmp_serde::decode::from_read::<std::fs::File, Vec<i64>>(file) {
             return values.into_iter().collect();
         }
@@ -481,6 +481,18 @@ pub mod tests {
     /// Test score file saving state
     #[test]
     fn score_state_test() {
-        todo!();
+        const FILE_PATH: &str = "test_scores.msgpack";
+
+        // Stored scores in file will be read in ascending order 
+        let scores = vec!(50,30,20,25,27,35);
+        save_state_to_file(FILE_PATH, scores.as_slice());
+
+        let buffer = read_state_from_file(FILE_PATH);
+        let mut it = buffer.iter().copied();
+        if let Some(value) = it.next() {
+            assert_eq!(value, 20);
+        } else {
+            panic!("No values read from file");
+        }
     }
 }
